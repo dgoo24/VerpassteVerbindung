@@ -1,0 +1,77 @@
+# Tema "Betriebsleitstelle" inspirado en Deutsche Bahn / ICE:
+# anthrazit de leitstelle + DB-Rot (#EC0016) + tipografia Barlow.
+
+[theme]
+base = "dark"
+
+primaryColor = "#EC0016"
+backgroundColor = "#101216"
+secondaryBackgroundColor = "#191C22"
+textColor = "#E6E9EF"
+borderColor = "#2A2F38"
+
+linkColor = "#FF4356"
+linkUnderline = false
+codeTextColor = "#E6E9EF"
+codeBackgroundColor = "#191C22"
+
+font = "Barlow:https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&display=swap"
+headingFont = "Barlow:https://fonts.googleapis.com/css2?family=Barlow:wght@600;700;800&display=swap"
+codeFont = "'IBM Plex Mono':https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap"
+
+baseFontSize = 15
+baseFontWeight = 400
+codeFontSize = "0.85rem"
+codeFontWeight = 400
+headingFontSizes = ["2.1rem", "1.55rem", "1.25rem", "1.1rem", "1rem", "0.9rem"]
+headingFontWeights = [800, 700, 700, 600, 600, 600]
+
+baseRadius = "8px"
+buttonRadius = "6px"
+showWidgetBorder = true
+showSidebarBorder = true
+
+dataframeBorderColor = "#2A2F38"
+dataframeHeaderBackgroundColor = "#22272F"
+dataframeHeaderTextColor = "#FFFFFF"
+
+# Paleta semantica (severidad, retrasos, estados)
+redColor = "#FF4B5C"
+redBackgroundColor = "#3A1016"
+redTextColor = "#FFB4BC"
+orangeColor = "#FFB000"
+orangeBackgroundColor = "#3A2A06"
+orangeTextColor = "#FFD98A"
+yellowColor = "#FFC400"
+yellowBackgroundColor = "#3A3206"
+yellowTextColor = "#FFE49A"
+greenColor = "#3DD68C"
+greenBackgroundColor = "#0E2C1C"
+greenTextColor = "#9CE6B8"
+blueColor = "#4CA6E8"
+blueBackgroundColor = "#0E2A40"
+blueTextColor = "#B9DEF7"
+violetColor = "#A78BFA"
+violetBackgroundColor = "#251B3E"
+violetTextColor = "#D6C8FF"
+grayColor = "#8A93A3"
+grayBackgroundColor = "#20242B"
+grayTextColor = "#C3C9D4"
+
+chartCategoricalColors = [
+  "#EC0016",
+  "#FFB000",
+  "#4CA6E8",
+  "#3DD68C",
+  "#A78BFA",
+  "#FF8FA3",
+  "#8A93A3",
+]
+
+[theme.sidebar]
+backgroundColor = "#0B0D11"
+secondaryBackgroundColor = "#16191F"
+textColor = "#E6E9EF"
+borderColor = "#2A2F38"
+primaryColor = "#EC0016"
+codeBackgroundColor = "#16191F"

@@ -1,0 +1,19 @@
+# Entorno virtual
+.venv/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Logs en tiempo de ejecucion
+logs/
+
+# Secretos: nunca subir credenciales
+.env
+.env.*
+!.env.example
+
+# Caché de datos descargados (feeds GTFS-DE)
+data/gtfs_rv/
+data/gtfs_fv/
