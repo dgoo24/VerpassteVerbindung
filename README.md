@@ -81,6 +81,8 @@ Variables principales de `.env`:
 | Variable | Descripcion | Defecto |
 | --- | --- | --- |
 | `DATA_SOURCE` | `nationwide`, `db` o `mock` | `nationwide` |
+| `DASHBOARD_MODE` | `auto`, `cloud` o `kafka` (fuente de datos del dashboard) | `auto` |
+| `KAFKA_BOOTSTRAP_SERVERS` | Broker de Kafka (modo `kafka`) | `localhost:9092` |
 | `NATIONWIDE_REFRESH_SECONDS` | Cadencia de sondeo del stream nacional | `60` |
 | `NATIONWIDE_HORIZON_MINUTES` | Ventana hacia delante de eventos publicados | `90` |
 | `NATIONWIDE_MAX_STATIONS` | Estaciones maximas por ciclo | `300` |
@@ -196,6 +198,54 @@ Una vez arrancado el sistema, abre en el navegador:
 http://localhost:8501
 ```
 
+## Despliegue en Streamlit Community Cloud
+
+El dashboard se puede publicar como app web sin ninguna infraestructura extra.
+La clave: en la nube **no hay broker de Kafka**, asi que la app ejecuta el
+pipeline de datos **dentro de su propio proceso** (`src/cloud_pipeline.py`):
+
+```
+GTFS-RT nacional + horario estatico Fernverkehr   (feeds publicos de gtfs.de)
+    -> telemetria + itinerarios sintetizados
+    -> ConnectionDetector (mismas reglas de negocio)
+    -> incidencias -> LiveStore del dashboard
+```
+
+El camino es identico al de local; lo unico que cambia es el transporte (no
+hay Topics de por medio). Se decide con `DASHBOARD_MODE`:
+
+| `DASHBOARD_MODE` | Comportamiento |
+| --- | --- |
+| `auto` (defecto) | Usa Kafka si el broker responde; si no, cae al pipeline in-process |
+| `cloud` | Siempre pipeline in-process (sin broker) |
+| `kafka` | Siempre los topics de Kafka |
+
+Pasos:
+
+1. Sube el repositorio a GitHub y crea la app en
+   [share.streamlit.io](https://share.streamlit.io) apuntando a ese repo.
+2. **Main file path**: `streamlit_app.py` (esta en la raiz; es un wrapper que
+   delega en `src/dashboard_app.py`).
+3. En **Settings -> Secrets** anade las credenciales de la API Timetables de
+   DB (solo si quieres los numeros de tren reales, `ICE 274`... en vez de la
+   linea):
+
+   ```toml
+   DB_CLIENT_ID = "tu-client-id"
+   DB_API_KEY = "tu-client-secret"
+   ```
+
+   Las claves deben ir **en el primer nivel** (sin `[seccion]`). El codigo las
+   lee de `st.secrets` y tambien de las variables de entorno, de modo que
+   `.env` sigue funcionando en local.
+
+4. (Opcional) `DASHBOARD_MODE = "cloud"` como secret, para forzar el modo sin
+   broker.
+
+Los feeds GTFS-RT se descargan en runtime y se cachean en `data/`; la primera
+carga del horario estatico tarda unos segundos. Sin credenciales de DB la app
+funciona igual: solo deja de mostrar los numeros de tren reales.
+
 ## Mitigacion de fatiga de alarmas
 
 - **Logica de negocio pura** en `src/business_rules.py`
@@ -233,6 +283,7 @@ train-missed-connection-mvp/
   docker-compose.yml
   requirements.txt
   README.md
+  streamlit_app.py         # punto de entrada (Streamlit Cloud / raiz)
   run.sh
   start.bat        # Windows: arranque con un doble clic
   run.ps1          # Windows: logica de arranque
@@ -243,13 +294,20 @@ train-missed-connection-mvp/
     config.py
     business_rules.py
     dashboard_app.py
+    cloud_pipeline.py         # pipeline in-process (despliegue sin Kafka)
     mock_gtfs_server.py
-    db_timetables_client.py       # cliente de la API Timetables de DB
+    gtfs_regional.py
+    gtfs_schedule.py
+    train_number_enricher.py
+    traveler_estimate.py
+    db_stations_client.py       # cliente de la API Stations de DB
+    db_timetables_client.py     # cliente de la API Timetables de DB
     producers/
       __init__.py
       gtfs_producer.py
       passenger_producer.py
       db_timetables_producer.py   # telemetria real (DATA_SOURCE=db)
+      gtfsrt_nationwide_producer.py  # telemetria nacional (gtfs.de)
     processors/
       __init__.py
       connection_detector.py

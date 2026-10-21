@@ -20,6 +20,7 @@ import csv
 import json
 import os
 import re
+import socket
 import sys
 import threading
 import time
@@ -37,6 +38,7 @@ from business_rules import (  # noqa: E402
     severity_rank,
 )
 from config import (  # noqa: E402
+    DASHBOARD_MODE,
     DASHBOARD_MAX_INCIDENTS,
     DASHBOARD_MAX_ITINERARIES,
     DASHBOARD_MAX_TELEMETRY,
@@ -86,6 +88,8 @@ class LiveStore:
         self.resolved: set[tuple[str, str, str]] = set()
         self.incident_total = 0
         self.last_event_at: float | None = None
+        # Como se alimentan los datos: "kafka" o "cloud" (pipeline in-process).
+        self.source_mode = "kafka"
 
     # ------------------------------------------------------------------ #
     # Utilidades
@@ -144,10 +148,53 @@ class LiveStore:
             }
 
 
+def _kafka_reachable(timeout: float = 2.0) -> bool:
+    """Comprueba si hay un broker Kafka escuchando en el bootstrap configurado."""
+    for server in KAFKA_BOOTSTRAP_SERVERS.split(","):
+        server = server.strip()
+        if not server:
+            continue
+        host, _, port = server.partition(":")
+        try:
+            with socket.create_connection(
+                (host or "localhost", int(port or 9092)), timeout=timeout
+            ):
+                return True
+        except (OSError, ValueError):
+            continue
+    return False
+
+
 @st.cache_resource
 def start_consumer() -> LiveStore:
-    """Arranca (una sola vez) el hilo que consume los topics de Kafka."""
+    """Arranca (una sola vez) la fuente de datos del dashboard.
+
+    Hay dos modos, gobernados por ``DASHBOARD_MODE``:
+
+    * ``kafka`` - consume los topics de Kafka (desarrollo local con broker).
+    * ``cloud`` - ejecuta el pipeline dentro del propio proceso: es lo que
+      permite desplegar la app en un hosting sin broker (Streamlit Cloud).
+    * ``auto``  - usa Kafka si el broker responde; si no, cae a ``cloud``.
+    """
     store = LiveStore()
+
+    mode = DASHBOARD_MODE
+    if mode not in {"kafka", "cloud", "auto"}:
+        mode = "auto"
+
+    if mode in {"auto", "cloud"} and (
+        mode == "cloud" or not _kafka_reachable()
+    ):
+        # Sin broker (hosting de una sola instancia): los datos se generan
+        # dentro del proceso con los feeds publicos de gtfs.de.
+        from cloud_pipeline import CloudPipeline
+
+        pipeline = CloudPipeline(store)
+        pipeline.start()
+        store.pipeline = pipeline
+        store.source_mode = "cloud"
+        print("[dashboard] Modo cloud: pipeline de datos in-process.")
+        return store
 
     def run() -> None:
         while True:
@@ -168,6 +215,7 @@ def start_consumer() -> LiveStore:
                 time.sleep(3)
 
     threading.Thread(target=run, daemon=True).start()
+    store.source_mode = "kafka"
     return store
 
 
@@ -836,8 +884,16 @@ def live_dashboard() -> None:
     kpis = compute_kpis(state)
 
     last = state["last_event_at"]
+    source = (
+        "GTFS-RT direkt (kein Broker)"
+        if getattr(store, "source_mode", "kafka") == "cloud"
+        else f"Kafka ({KAFKA_BOOTSTRAP_SERVERS})"
+    )
     if last is None:
-        st.caption("Warte auf Kafka-Ereignisse … Läuft das System?")
+        st.caption(f"Warte auf Ereignisse … Quelle: {source}")
+        pipeline = getattr(store, "pipeline", None)
+        if pipeline is not None:
+            st.caption(f"Pipeline-Status: {pipeline.status}")
     else:
         scope = filters["land"] if filters["land"] != "Alle" else "Ganz Deutschland"
         if filters["stadt"] != "Alle":
@@ -845,7 +901,8 @@ def live_dashboard() -> None:
         st.caption(
             f"Letztes Ereignis: "
             f"{datetime.fromtimestamp(last).strftime('%H:%M:%S')} · "
-            f"Auto-Refresh alle {REFRESH_SECONDS}s · Scope: {scope}"
+            f"Auto-Refresh alle {REFRESH_SECONDS}s · Scope: {scope} · "
+            f"Quelle: {source}"
         )
 
     with st.container(horizontal=True):

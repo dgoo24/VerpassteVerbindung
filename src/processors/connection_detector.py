@@ -34,6 +34,12 @@ from config import (  # noqa: E402
 # alarmas: la telemetria llega cada pocos segundos y no debe inundar el panel).
 INCIDENT_COOLDOWN_SECONDS = 60
 
+# Topes del estado en memoria: en un despliegue de larga duracion (por ejemplo
+# una app en la nube) el proceso puede vivir horas y sin poda la memoria crece
+# sin limite.
+MAX_TELEMETRY_ITEMS = 50000
+MAX_ITINERARY_ITEMS = 50000
+
 
 class ConnectionDetector:
     """Mantiene el estado de telemetria + itinerarios y evalua transbordos."""
@@ -57,6 +63,7 @@ class ConnectionDetector:
         """Registra una telemetria y devuelve los itinerarios afectados."""
         telemetry = TrainTelemetry.model_validate(raw)
         self.telemetry[(telemetry.trip_id, telemetry.station_id)] = telemetry
+        self._prune()
         return self._itineraries_for(telemetry.trip_id, telemetry.station_id)
 
     def add_itinerary(self, raw: dict) -> PassengerItinerary:
@@ -66,7 +73,28 @@ class ConnectionDetector:
         self._by_station.setdefault(itinerary.transfer_station_id, {})[
             itinerary.passenger_id
         ] = itinerary
+        self._prune()
         return itinerary
+
+    def _prune(self) -> None:
+        """Descarta las entradas mas antiguas cuando se supera el limite.
+
+        Los dict de Python conservan el orden de insercion, asi que las
+        primeras claves son las mas antiguas.
+        """
+        while len(self.telemetry) > MAX_TELEMETRY_ITEMS:
+            self.telemetry.pop(next(iter(self.telemetry)), None)
+        while len(self.itineraries) > MAX_ITINERARY_ITEMS:
+            oldest = next(iter(self.itineraries))
+            itinerary = self.itineraries.pop(oldest, None)
+            if itinerary is None:
+                continue
+            station = self._by_station.get(itinerary.transfer_station_id)
+            if station is None:
+                continue
+            station.pop(itinerary.passenger_id, None)
+            if not station:
+                self._by_station.pop(itinerary.transfer_station_id, None)
 
     def _itineraries_for(
         self, trip_id: str, station_id: str
@@ -140,10 +168,14 @@ class ConnectionDetector:
         )
         return incident
 
-    def emit_incident(
-        self, incident: OperationalIncident, producer: KafkaProducer
-    ) -> bool:
-        """Publica la incidencia operativa respetando el cooldown por enlace."""
+    def claim_incident_slot(self, incident: OperationalIncident) -> bool:
+        """Reserva el slot de emision de una incidencia (cooldown por enlace).
+
+        Devuelve ``True`` si la incidencia puede emitirse (no hay otra del
+        mismo enlace dentro del cooldown). El metodo es independiente del
+        transporte: sirve tanto para publicar en Kafka como para alimentar
+        directamente el store del dashboard.
+        """
         key = (incident.station_id, incident.origin_trip, incident.destination_trip)
         now = time.time()
         last = self.last_incident_at.get(key, 0.0)
@@ -157,6 +189,15 @@ class ConnectionDetector:
             self.last_incident_at = {
                 k: v for k, v in self.last_incident_at.items() if v >= cutoff
             }
+        return True
+
+    def emit_incident(
+        self, incident: OperationalIncident, producer: KafkaProducer
+    ) -> bool:
+        """Publica la incidencia operativa respetando el cooldown por enlace."""
+        if not self.claim_incident_slot(incident):
+            return False
+
         producer.send(
             TOPIC_OPERATIONAL_INCIDENTS,
             key=f"{incident.station_id}:{incident.origin_trip}->{incident.destination_trip}",

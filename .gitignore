@@ -13,7 +13,16 @@ logs/
 .env
 .env.*
 !.env.example
+.streamlit/secrets.toml
 
 # Caché de datos descargados (feeds GTFS-DE)
 data/gtfs_rv/
 data/gtfs_fv/
+
+# Scripts de trabajo descartables (no forman parte de la app)
+chk.py
+check.py
+_peek.py
+fix.py
+fix2.py
+add_css.py
