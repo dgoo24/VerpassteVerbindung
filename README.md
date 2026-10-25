@@ -1,8 +1,8 @@
-🚆# MVP: Echtzeit-Events und Streaming – Leitstelle für den Bahnverkehr
+# 🚆 MVP: Echtzeit-Events und Streaming – Leitstelle für den Bahnverkehr
 
 Funktionsfähiges MVP für die **Betriebsleitstelle**. Überwacht Zugverspätungen mithilfe von GTFS-RT-Feeds, erkennt automatisch gefährdete Anschlüsse und veröffentlicht **priorisierte betriebliche Störungsmeldungen**, damit das Betriebspersonal kritische Anschlussverbindungen im Netz frühzeitig erkennen und verwalten kann.
 
-## Architektur
+## 🧩 Architektur
 
 ```
 gtfsrt_nationwide_producer  --(nationales GTFS-RT)-->  [train-telemetry]  (Kafka)
@@ -22,13 +22,13 @@ gtfsrt_nationwide_producer  --(nationales GTFS-RT)-->  [train-telemetry]  (Kafka
 
 (Im Modus `mock`/`db` wird die Quelle links durch `mock_gtfs_server + gtfs_producer` oder durch `db_timetables_producer` ersetzt.)
 
-## Kafka-Topics
+## ⚡ Kafka-Topics
 
 - `train-telemetry`: trip_id, train_number, station_id, delay_seconds, scheduled_arrival, estimated_arrival, timestamp.
 - `passenger-itineraries`: passenger_id (geschätzte Kohorte), origin_trip_id, destination_trip_id, transfer_station_id, min_transfer_time_minutes, destination_scheduled_departure, estimated_travelers (+ die Felder estimated_travelers_low/high, die die Schätzung als Bereich angeben).
 - `operational-incidents` (Betriebsebene): station_id, origin_trip, destination_trip, severity (ALTA/MEDIA/BAJA), recommended_action, passengers_affected (+ passengers_affected_low/high als Bereich), available_transfer_minutes, required_minutes, deficit_minutes, delay_seconds, created_at.
 
-## Datenquelle: national, DB (ein Bahnhof) oder Mock
+## 📊 Datenquelle: national, DB (ein Bahnhof) oder Mock
 
 Das System unterstützt drei Quellen, die über `DATA_SOURCE` in `.env` ausgewählt werden:
 
@@ -40,7 +40,7 @@ In allen realen Modi werden die Fahrgastanschlüsse **synthetisch** anhand des F
 
 > Hinweis zur Datenabdeckung: Der nationale Echtzeit-Feed deckt den **Fernverkehr** und diejenigen Regionalverkehrsbetreiber ab, die Daten in `realtime.gtfs.de` veröffentlichen. Der übrige Nahverkehr ist nicht in Echtzeit enthalten; seine Fahrplandaten sind jedoch in den statischen Feeds verfügbar. Für Echtzeitdaten einer bestimmten Region müsste deren Feed integriert werden (VBB, MVG, NASA usw.).
 
-### DB-Zugang konfigurieren (nur `DATA_SOURCE=db`)
+### 📊 DB-Zugang konfigurieren (nur `DATA_SOURCE=db`)
 
 1. Erstelle ein Konto unter https://developers.deutschebahn.com und eine *Application*.
 2. Abonniere die **Timetables**-API im **Free**-Tarif (60 Aufrufe/Minute, Lizenz CC BY 4.0 – Quellenangabe: „© DB Station&Service AG“).
@@ -88,14 +88,14 @@ Variablen in `.env` für die Anreicherung:
 | `DB_ENRICH_WORKERS` | Parallel abgefragte Bahnhöfe | `6` |
 | `DB_ENRICH_MATCH_TOLERANCE` | Toleranz (s) beim Abgleich von Uhrzeit und Linie | `300` |
 
-## Voraussetzungen
+## 📁 Voraussetzungen
 
 - Python 3.11+
 - Docker und Docker Compose (Plugin `docker compose`)
 - Bash (Linux, macOS oder WSL/Git Bash)
 - Windows: PowerShell (standardmäßig enthalten)
 
-## Ausführung
+## 🧩 Ausführung
 
 ### Windows (ein Klick, ohne Git Bash)
 
@@ -190,7 +190,7 @@ Die GTFS-RT-Feeds werden zur Laufzeit heruntergeladen und in `data/` zwischenges
 >
 > Die Fahrgastschätzung wird als **Bereich** veröffentlicht, um Scheingenauigkeit zu vermeiden: Der Mittelwert entspricht 50 % der typischen Kapazität des ankommenden Zuges (ICE 445, IC 380, EC 340, TGV 500, Regionalzug 220); der Bereich reicht von **35 % bis 65 %** (z. B. ICE: 155-222-289). Dashboard und Konsole zeigen den Bereich („155-289 Reisende (geschätzt)“); wenn eine Reiseverbindung keinen Bereich enthält, wird der Mittelwert verwendet.
 
-## Struktur
+## 📡 Struktur
 
 ```text
 train-missed-connection-mvp/
@@ -229,7 +229,7 @@ train-missed-connection-mvp/
       incident_console.py
 ```
 
-## System stoppen
+## 🧩 System stoppen
 
 - Windows: Doppelklick auf `stop.bat`.
 - Linux/macOS/Git Bash: `Ctrl+C` im Terminal beendet die Python-Prozesse. Um Kafka herunterzufahren:
