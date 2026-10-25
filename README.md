@@ -1,326 +1,239 @@
-# MVP: Eventos y Streaming en Tiempo Real - Centro de Control Ferroviario
 
-MVP funcional orientado al **Centro de Control de Operaciones**. Monitoriza
-retrasos de trenes a traves de feeds GTFS-RT, detecta automaticamente los
-transbordos en riesgo y publica **incidencias operativas priorizadas** para que
-el operario anticipe y gestione los enlaces criticos de la red.
+# MVP: Echtzeit-Events und Streaming – Leitstelle für den Bahnverkehr
 
-## Arquitectura
+Funktionsfähiges MVP für die **Betriebsleitstelle**. Überwacht Zugverspätungen mithilfe von GTFS-RT-Feeds, erkennt automatisch gefährdete Anschlüsse und veröffentlicht **priorisierte betriebliche Störungsmeldungen**, damit das Betriebspersonal kritische Anschlussverbindungen im Netz frühzeitig erkennen und verwalten kann.
+
+## Architektur
 
 ```
-gtfsrt_nationwide_producer  --(GTFS-RT nacional)-->  [train-telemetry]  (Kafka)
-        (realtime.gtfs.de)  + itinerarios sintetizados       |
-                                                             v
+gtfsrt_nationwide_producer  --(nationales GTFS-RT)-->  [train-telemetry]  (Kafka)
+        (realtime.gtfs.de)  + synthetisierte Reiseverbindungen       |
+                                                                  v
                                    [passenger-itineraries] -->  connection_detector
-                                                             |
-                                                             v
+                                                                  |
+                                                                  v
                                           [operational-incidents] (Kafka)
-                                                          |
-                                        +-----------------+-----------------+
-                                        |                                   |
-                                        v                                   v
-                                 incident_console                      dashboard
-                                     (operario)                        (operario)
+                                                         |
+                                        +----------------+----------------+
+                                        |                                 |
+                                        v                                 v
+                                 incident_console                    dashboard
+                                    (Betrieb)                         (Betrieb)
 ```
 
-(En modo `mock`/`db` la fuente de la izquierda se sustituye por
-`mock_gtfs_server + gtfs_producer` o por `db_timetables_producer`.)
+(Im Modus `mock`/`db` wird die Quelle links durch `mock_gtfs_server + gtfs_producer` oder durch `db_timetables_producer` ersetzt.)
 
-## Topics de Kafka
+## Kafka-Topics
 
-- `train-telemetry`: trip_id, train_number, station_id, delay_seconds,
-  scheduled_arrival, estimated_arrival, timestamp.
-- `passenger-itineraries`: passenger_id (cohorte estimada), origin_trip_id,
-  destination_trip_id, transfer_station_id, min_transfer_time_minutes,
-  destination_scheduled_departure, estimated_travelers (+ los campos
-  estimated_travelers_low/high, que abren el estimado como rango).
-- `operational-incidents` (capa operario): station_id, origin_trip,
-  destination_trip, severity (ALTA/MEDIA/BAJA), recommended_action,
-  passengers_affected (+ passengers_affected_low/high como rango),
-  available_transfer_minutes, required_minutes,
-  deficit_minutes, delay_seconds, created_at.
+- `train-telemetry`: trip_id, train_number, station_id, delay_seconds, scheduled_arrival, estimated_arrival, timestamp.
+- `passenger-itineraries`: passenger_id (geschätzte Kohorte), origin_trip_id, destination_trip_id, transfer_station_id, min_transfer_time_minutes, destination_scheduled_departure, estimated_travelers (+ die Felder estimated_travelers_low/high, die die Schätzung als Bereich angeben).
+- `operational-incidents` (Betriebsebene): station_id, origin_trip, destination_trip, severity (ALTA/MEDIA/BAJA), recommended_action, passengers_affected (+ passengers_affected_low/high als Bereich), available_transfer_minutes, required_minutes, deficit_minutes, delay_seconds, created_at.
 
-## Fuente de datos: nacional, DB (una estacion) o mock
+## Datenquelle: national, DB (ein Bahnhof) oder Mock
 
-El sistema admite tres fuentes, seleccionables con `DATA_SOURCE` en `.env`:
+Das System unterstützt drei Quellen, die über `DATA_SOURCE` in `.env` ausgewählt werden:
 
-- `DATA_SOURCE=nationwide` (**por defecto**): **GTFS-RT nacional en tiempo
-  real** de `realtime.gtfs.de/realtime-free.pb` (gtfs.de, actualizado cada
-  10 s). Cubre trenes Fernverkehr de **toda Alemania** y los operadores que
-  alimentan ese stream (VRR, VBB, SIRI por estado...). El productor
-  `gtfsrt_nationwide_producer` cruza cada TripUpdate con el horario estatico
-  Fernverkehr (`gtfs_schedule`, feed `fv` de gtfs.de) y publica telemetria +
-  itinerarios de transbordo para todas las estaciones activas. El dashboard
-  permite **filtrar por Region (Bundesland) y Ciudad**.
-- `DATA_SOURCE=db`: datos reales de la **API Timetables de Deutsche Bahn**
-  (DB API Marketplace) para **una** estacion (por defecto Fulda, EVA 8000115).
-- `DATA_SOURCE=mock`: servidor GTFS-RT simulado local
-  (`mock_gtfs_server` + `gtfs_producer`), ideal para demos sin red.
+- `DATA_SOURCE=nationwide` (**Standard**): **nationaler GTFS-RT-Livestream** von `realtime.gtfs.de/realtime-free.pb` (gtfs.de, Aktualisierung alle 10 s). Deckt Fernverkehrszüge in **ganz Deutschland** sowie die Betreiber ab, die Daten in diesen Stream einspeisen (VRR, VBB, SIRI je Bundesland usw.). Der Produzent `gtfsrt_nationwide_producer` gleicht jedes TripUpdate mit dem statischen Fernverkehrsfahrplan (`gtfs_schedule`, Feed `fv` von gtfs.de) ab und veröffentlicht Telemetrie sowie Anschlussverbindungen für alle aktiven Bahnhöfe. Im Dashboard kann nach **Bundesland und Stadt** gefiltert werden.
+- `DATA_SOURCE=db`: Reale Daten der **Timetables-API der Deutschen Bahn** (DB API Marketplace) für **einen** Bahnhof (standardmäßig Fulda, EVA 8000115).
+- `DATA_SOURCE=mock`: lokaler simulierter GTFS-RT-Server (`mock_gtfs_server` + `gtfs_producer`), ideal für Demos ohne Netzwerkverbindung.
 
-En todos los modos reales los transbordos de pasajeros se **sintetizan** a
-partir de la malla horaria (cada llegada se empareja con la siguiente salida
-con un margen razonable); no existen itinerarios reales en las fuentes, por lo
-que la cifra de pasajeros es una **estimacion** que se publica como rango.
+In allen realen Modi werden die Fahrgastanschlüsse **synthetisch** anhand des Fahrplans erzeugt (jede Ankunft wird mit der nächsten Abfahrt und einem angemessenen Zeitpuffer verknüpft). Da die Quellen keine realen Reiseverbindungen enthalten, ist die Fahrgastzahl eine **Schätzung**, die als Bereich veröffentlicht wird.
 
-> Nota de cobertura (honesta): el tiempo real nacional cubre **Fernverkehr** y
-> los operadores regionales que publican en `realtime.gtfs.de`. El resto del
-> Nahverkehr no aparece en tiempo real; su horario si esta en los feeds
-> estaticos. Para tiempo real de una region concreta habria que integrar su
-> feed (VBB, MVG, NASA...).
+> Hinweis zur Datenabdeckung: Der nationale Echtzeit-Feed deckt den **Fernverkehr** und diejenigen Regionalverkehrsbetreiber ab, die Daten in `realtime.gtfs.de` veröffentlichen. Der übrige Nahverkehr ist nicht in Echtzeit enthalten; seine Fahrplandaten sind jedoch in den statischen Feeds verfügbar. Für Echtzeitdaten einer bestimmten Region müsste deren Feed integriert werden (VBB, MVG, NASA usw.).
 
-### Configurar el acceso a DB (solo `DATA_SOURCE=db`)
+### DB-Zugang konfigurieren (nur `DATA_SOURCE=db`)
 
-1. Crea una cuenta en https://developers.deutschebahn.com y una *application*.
-2. Sususcribete a la API **Timetables**, plan **Free** (60 llamadas/minuto,
-   licencia CC BY 4.0 - atribucion: "© DB Station&Service AG").
-3. Copia `.env.example` a `.env` y rellena `DB_CLIENT_ID` y `DB_API_KEY`.
-   El archivo `.env` esta en `.gitignore`: no lo subas al repositorio.
+1. Erstelle ein Konto unter https://developers.deutschebahn.com und eine *Application*.
+2. Abonniere die **Timetables**-API im **Free**-Tarif (60 Aufrufe/Minute, Lizenz CC BY 4.0 – Quellenangabe: „© DB Station&Service AG“).
+3. Kopiere `.env.example` nach `.env` und trage `DB_CLIENT_ID` und `DB_API_KEY` ein. Die Datei `.env` steht in `.gitignore`: Lade sie nicht ins Repository hoch.
 
-Variables principales de `.env`:
+Wichtige Variablen in `.env`:
 
-| Variable | Descripcion | Defecto |
+| Variable | Beschreibung | Standardwert |
 | --- | --- | --- |
-| `DATA_SOURCE` | `nationwide`, `db` o `mock` | `nationwide` |
-| `DASHBOARD_MODE` | `auto`, `cloud` o `kafka` (fuente de datos del dashboard) | `auto` |
-| `KAFKA_BOOTSTRAP_SERVERS` | Broker de Kafka (modo `kafka`) | `localhost:9092` |
-| `NATIONWIDE_REFRESH_SECONDS` | Cadencia de sondeo del stream nacional | `60` |
-| `NATIONWIDE_HORIZON_MINUTES` | Ventana hacia delante de eventos publicados | `90` |
-| `NATIONWIDE_MAX_STATIONS` | Estaciones maximas por ciclo | `300` |
-| `DB_CLIENT_ID` / `DB_API_KEY` | Credenciales del API Marketplace (solo `db`) | - |
-| `DB_STATION_EVA` | EVA de la estacion a monitorizar (solo `db`) | `8000115` (Fulda) |
-| `DB_REFRESH_SECONDS` | Cadencia de sondeo (solo `db`) | `30` |
-| `MIN_TRANSFER_TIME_MINUTES` | Margen minimo de transbordo | `7` |
-| `MAX_CONNECTION_WINDOW_MINUTES` | Ventana maxima para emparejar conexiones | `45` |
-| `DASHBOARD_TABLE_ROW_LIMIT` | Filas maximas en las tablas del dashboard | `300` |
+| `DATA_SOURCE` | `nationwide`, `db` oder `mock` | `nationwide` |
+| `DASHBOARD_MODE` | `auto`, `cloud` oder `kafka` (Datenquelle des Dashboards) | `auto` |
+| `KAFKA_BOOTSTRAP_SERVERS` | Kafka-Broker (Modus `kafka`) | `localhost:9092` |
+| `NATIONWIDE_REFRESH_SECONDS` | Abfrageintervall des nationalen Streams | `60` |
+| `NATIONWIDE_HORIZON_MINUTES` | Vorauszeitraum veröffentlichter Ereignisse | `90` |
+| `NATIONWIDE_MAX_STATIONS` | Maximale Anzahl von Bahnhöfen je Zyklus | `300` |
+| `DB_CLIENT_ID` / `DB_API_KEY` | Zugangsdaten für den API Marketplace (nur `db`) | - |
+| `DB_STATION_EVA` | EVA-Nummer des zu überwachenden Bahnhofs (nur `db`) | `8000115` (Fulda) |
+| `DB_REFRESH_SECONDS` | Abfrageintervall (nur `db`) | `30` |
+| `MIN_TRANSFER_TIME_MINUTES` | Mindestumsteigezeit | `7` |
+| `MAX_CONNECTION_WINDOW_MINUTES` | Maximales Zeitfenster zum Zuordnen von Anschlüssen | `45` |
+| `DASHBOARD_TABLE_ROW_LIMIT` | Maximale Zeilenanzahl in Dashboard-Tabellen | `300` |
 
-> En modo nacional la telemetria se enriquece cruzando el `trip_id` del
-> GTFS-RT con el horario estatico `fv` (linea, destino y horarios planificados).
+> Im nationalen Modus wird die Telemetrie durch Abgleich der `trip_id` aus GTFS-RT mit dem statischen Fahrplan `fv` (Linie, Ziel und geplante Zeiten) angereichert.
 
-### Numeros de tren reales (Opcion A)
+### Echte Zugnummern (Option A)
 
-El GTFS-RT nacional de gtfs.de **solo publica el numero de linea** (p. ej.
-`ICE 25`), no el numero de tren (p. ej. `ICE 274`). Para mostrar el numero de
-tren real, el productor nacional usa la API **Timetables** de DB (la misma del
-modo `db`) sobre las **estaciones mas concurridas** del horario:
+Der nationale GTFS-RT-Feed von gtfs.de veröffentlicht **nur die Liniennummer** (z. B. `ICE 25`), nicht die Zugnummer (z. B. `ICE 274`). Um die tatsächliche Zugnummer anzuzeigen, verwendet der nationale Produzent die **Timetables**-API der DB (dieselbe wie im Modus `db`) für die **am stärksten frequentierten Bahnhöfe** des Fahrplans:
 
-1. Selecciona las `DB_ENRICH_MAX_STATIONS` estaciones con mas paradas
-   Fernverkehr y resuelve su EVA con la API **Stations** de DB (catalogo
-   cacheado en `data/db_stations.json`).
-2. `train_number_enricher` sondea en segundo plano el plan (`/plan`) y los
-   cambios (`/fchg`) de esas estaciones y construye un indice
-   `(estacion, dia, categoria, minuto) -> numero de tren`.
-3. En cada evento, si el `(estacion, linea, hora planificada)` casa con el
-   plan de DB, el campo `train_number` pasa a ser el numero real (`ICE 274`);
-   si no hay match, se mantiene la linea (`ICE 25`). El campo `line` siempre
-   conserva la linea.
+1. Wähle die `DB_ENRICH_MAX_STATIONS` Bahnhöfe mit den meisten Fernverkehrshalten aus und ermittle ihre EVA-Nummern über die **Stations**-API der DB (Katalog im Cache `data/db_stations.json`).
+2. `train_number_enricher` fragt im Hintergrund den Fahrplan (`/plan`) und die Änderungen (`/fchg`) dieser Bahnhöfe ab und erstellt einen Index `(Bahnhof, Tag, Kategorie, Minute) -> Zugnummer`.
+3. Wenn bei einem Ereignis `(Bahnhof, Linie, geplante Uhrzeit)` mit dem DB-Fahrplan übereinstimmt, wird das Feld `train_number` auf die tatsächliche Zugnummer gesetzt (`ICE 274`); andernfalls bleibt die Liniennummer erhalten (`ICE 25`). Das Feld `line` enthält immer die Liniennummer.
 
-Resultado: **cobertura nacional completa** (via GTFS-RT) con **numeros de tren
-reales** en los grandes nodos. Configurable con `DB_ENRICH_*` en `.env`.
+Ergebnis: **vollständige nationale Abdeckung** über GTFS-RT mit **echten Zugnummern** an großen Knotenpunkten. Konfigurierbar über `DB_ENRICH_*` in `.env`.
 
-> Limitacion honesta: la API Timetables es por estacion (plan Free, 60
-> req/min), asi que solo las estaciones sondeadas reciben numero de tren; el
-> resto muestra la linea. Aumentar `DB_ENRICH_MAX_STATIONS` amplia cobertura a
-> costa de mas llamadas al API.
+> Einschränkung: Die Timetables-API arbeitet bahnhofsbezogen (Free-Tarif, 60 Anfragen/Minute). Daher erhalten nur abgefragte Bahnhöfe echte Zugnummern; bei den übrigen wird die Liniennummer angezeigt. Durch Erhöhen von `DB_ENRICH_MAX_STATIONS` lässt sich die Abdeckung auf Kosten zusätzlicher API-Aufrufe erweitern.
 
-Variables de `.env` para el enriquecimiento:
+Variablen in `.env` für die Anreicherung:
 
-| Variable | Descripcion | Defecto |
+| Variable | Beschreibung | Standardwert |
 | --- | --- | --- |
-| `DB_ENRICH_ENABLED` | Activa los numeros de tren reales | `true` |
-| `DB_ENRICH_MAX_STATIONS` | Nº de estaciones (por trafico) a sondear | `40` |
-| `DB_ENRICH_PLAN_HOURS` | Horas de plan por estacion y barrido | `2` |
-| `DB_ENRICH_REFRESH_SECONDS` | Cadencia del barrido de fondo | `180` |
-| `DB_ENRICH_WORKERS` | Estaciones sondeadas en paralelo | `6` |
-| `DB_ENRICH_MATCH_TOLERANCE` | Tolerancia (s) al casar hora/linea | `300` |
+| `DB_ENRICH_ENABLED` | Aktiviert echte Zugnummern | `true` |
+| `DB_ENRICH_MAX_STATIONS` | Anzahl der nach Verkehrsaufkommen abgefragten Bahnhöfe | `40` |
+| `DB_ENRICH_PLAN_HOURS` | Fahrplanstunden je Bahnhof und Durchlauf | `2` |
+| `DB_ENRICH_REFRESH_SECONDS` | Intervall des Hintergrunddurchlaufs | `180` |
+| `DB_ENRICH_WORKERS` | Parallel abgefragte Bahnhöfe | `6` |
+| `DB_ENRICH_MATCH_TOLERANCE` | Toleranz (s) beim Abgleich von Uhrzeit und Linie | `300` |
 
-
-## Requisitos
+## Voraussetzungen
 
 - Python 3.11+
-- Docker y Docker Compose (plugin `docker compose`)
-- Bash (Linux, macOS o WSL/Git Bash)
-- Windows: PowerShell (incluido por defecto)
+- Docker und Docker Compose (Plugin `docker compose`)
+- Bash (Linux, macOS oder WSL/Git Bash)
+- Windows: PowerShell (standardmäßig enthalten)
 
-## Ejecucion
+## Ausführung
 
-### Windows (un solo clic, sin Git Bash)
+### Windows (ein Klick, ohne Git Bash)
 
-Haz **doble clic en `start.bat`**. El script arranca Docker Desktop si hace
-falta, levanta Kafka, prepara el entorno Python, pone en marcha todos los
-procesos y **abre el dashboard en el navegador automaticamente**.
+Führe einen **Doppelklick auf `start.bat`** aus. Das Skript startet bei Bedarf Docker Desktop, startet Kafka, richtet die Python-Umgebung ein, startet alle Prozesse und **öffnet das Dashboard automatisch im Browser**.
 
-Para detenerlo, haz doble clic en `stop.bat`.
+Zum Beenden doppelklicke auf `stop.bat`.
 
 ### Linux / macOS / WSL / Git Bash
 
-Un solo comando:
+Ein einziger Befehl:
 
 ```bash
 chmod +x run.sh && ./run.sh
 ```
 
-El script crea el entorno virtual, instala dependencias, levanta Kafka en modo
-KRaft, espera al puerto 9092, arranca el servidor GTFS-RT, publica los
-itinerarios y lanza en paralelo el detector, el productor, la consola de
-incidencias y el dashboard web.
+Das Skript erstellt die virtuelle Umgebung, installiert Abhängigkeiten, startet Kafka im KRaft-Modus, wartet auf Port 9092, startet den GTFS-RT-Server, veröffentlicht die Reiseverbindungen und startet parallel den Detektor, den Produzenten, die Störungskonsole und das Web-Dashboard.
 
-## Dashboard web (Centro de Control)
+## Web-Dashboard (Leitstelle)
 
-`run.sh` / `start.bat` levantan un dashboard en Streamlit que consume los topics
-de Kafka en tiempo real (auto-refresco cada 2 segundos). Es el **panel del
-operario**:
+`run.sh` / `start.bat` starten ein Streamlit-Dashboard, das die Kafka-Topics in Echtzeit konsumiert (automatische Aktualisierung alle 2 Sekunden). Es ist die **Bedienoberfläche des Betriebspersonals**:
 
-- KPIs de red: trenes monitorizados, trenes con retraso, puntualidad,
-  incidencias abiertas y pasajeros afectados.
-- **Incidencias priorizadas**: ordenadas estrictamente por severidad
-  (`ALTA` en rojo -> `MEDIA` -> `BAJA`), con la accion recomendada.
-- **Estado de todos los trenes** de la red, con el retraso coloreado.
-- **Filtro por estacion** (`selectbox`) para aislar el nodo logistico.
-- **Gestion de incidencias**: botones para marcar incidencias como
-  resueltas y limpiar la vista.
+- Netzwerk-KPIs: überwachte Züge, verspätete Züge, Pünktlichkeit, offene Störungen und betroffene Fahrgäste.
+- **Priorisierte Störungen**: strikt nach Schweregrad sortiert (`ALTA` = HOCH in Rot -> `MEDIA` = MITTEL -> `BAJA` = NIEDRIG), einschließlich empfohlener Maßnahme.
+- **Status aller Züge** im Netz, mit farblich hervorgehobener Verspätung.
+- **Bahnhofsfilter** (`selectbox`), um einen logistischen Knoten isoliert zu betrachten.
+- **Störungsverwaltung**: Schaltflächen zum Markieren von Störungen als behoben und zum Leeren der Ansicht.
 
-### Identidad visual (estilo DB / ICE)
+### Visuelle Identität (DB-/ICE-Stil)
 
-El panel usa una estetica de **Betriebsleitstelle** inspirada en los trenes
-alemanes:
+Das Dashboard verwendet eine **Betriebsleitstellen**-Ästhetik, die von deutschen Zügen inspiriert ist:
 
-- Paleta definida en `.streamlit/config.toml`: fondo *anthrazit* (modo oscuro),
-  rojo corporativo DB (`#EC0016`), ambar de retrasos y verde de puntualidad.
-- Tipografia **Barlow** para titulos y **IBM Plex Mono** para codigo.
-- Cabecera con logotipo `DB`, fecha en aleman y semaforo **LIVE · KAFKA OK**
-  que pulsa cuando llegan eventos.
-- Secciones con franja roja, KPIs en tarjetas y filas coloreadas por severidad
-  y retraso. La consola de incidencias usa la misma paleta en ANSI.
+- Festgelegte Farbpalette in `.streamlit/config.toml`: anthrazitfarbener Hintergrund (Dark Mode), DB-Unternehmensrot (`#EC0016`), Verspätungsorange und Pünktlichkeitsgrün.
+- Schriftarten **Barlow** für Überschriften und **IBM Plex Mono** für Code.
+- Kopfzeile mit `DB`-Logo, Datum auf Deutsch und Statusanzeige **LIVE · KAFKA OK**, die bei eingehenden Ereignissen pulsiert.
+- Abschnitte mit rotem Balken, KPI-Karten und nach Schweregrad und Verspätung eingefärbten Zeilen. Die Störungskonsole verwendet dieselbe Farbpalette in ANSI.
 
-Una vez arrancado el sistema, abre en el navegador:
+Nach dem Start des Systems öffne im Browser:
 
-```
+```text
 http://localhost:8501
 ```
 
-## Despliegue en Streamlit Community Cloud
+## Bereitstellung auf Streamlit Community Cloud
 
-El dashboard se puede publicar como app web sin ninguna infraestructura extra.
-La clave: en la nube **no hay broker de Kafka**, asi que la app ejecuta el
-pipeline de datos **dentro de su propio proceso** (`src/cloud_pipeline.py`):
+Das Dashboard kann ohne zusätzliche Infrastruktur als Web-App veröffentlicht werden. Der entscheidende Punkt: In der Cloud gibt es **keinen Kafka-Broker**, daher führt die App die Datenpipeline **innerhalb ihres eigenen Prozesses** aus (`src/cloud_pipeline.py`):
 
-```
-GTFS-RT nacional + horario estatico Fernverkehr   (feeds publicos de gtfs.de)
-    -> telemetria + itinerarios sintetizados
-    -> ConnectionDetector (mismas reglas de negocio)
-    -> incidencias -> LiveStore del dashboard
+```text
+Nationales GTFS-RT + statischer Fernverkehrsfahrplan (öffentliche Feeds von gtfs.de)
+    -> Telemetrie + synthetisierte Reiseverbindungen
+    -> ConnectionDetector (dieselben Geschäftsregeln)
+    -> Störungen -> LiveStore des Dashboards
 ```
 
-El camino es identico al de local; lo unico que cambia es el transporte (no
-hay Topics de por medio). Se decide con `DASHBOARD_MODE`:
+Der Ablauf ist identisch mit dem lokalen Betrieb; nur der Transportweg ändert sich (es gibt keine Kafka-Topics). Die Auswahl erfolgt über `DASHBOARD_MODE`:
 
-| `DASHBOARD_MODE` | Comportamiento |
+| `DASHBOARD_MODE` | Verhalten |
 | --- | --- |
-| `auto` (defecto) | Usa Kafka si el broker responde; si no, cae al pipeline in-process |
-| `cloud` | Siempre pipeline in-process (sin broker) |
-| `kafka` | Siempre los topics de Kafka |
+| `auto` (Standard) | Verwendet Kafka, wenn der Broker antwortet; andernfalls wird auf die In-Process-Pipeline umgeschaltet |
+| `cloud` | Immer In-Process-Pipeline (ohne Broker) |
+| `kafka` | Immer die Kafka-Topics |
 
-Pasos:
+Schritte:
 
-1. Sube el repositorio a GitHub y crea la app en
-   [share.streamlit.io](https://share.streamlit.io) apuntando a ese repo.
-2. **Main file path**: `streamlit_app.py` (esta en la raiz; es un wrapper que
-   delega en `src/dashboard_app.py`).
-3. En **Settings -> Secrets** anade las credenciales de la API Timetables de
-   DB (solo si quieres los numeros de tren reales, `ICE 274`... en vez de la
-   linea):
+1. Lade das Repository auf GitHub hoch und erstelle unter [share.streamlit.io](https://share.streamlit.io) eine App, die auf dieses Repository verweist.
+2. **Main file path**: `streamlit_app.py` (liegt im Stammverzeichnis; es ist ein Wrapper, der an `src/dashboard_app.py` delegiert).
+3. Füge unter **Settings -> Secrets** die Zugangsdaten für die DB-Timetables-API hinzu (nur wenn du echte Zugnummern wie `ICE 274` statt der Liniennummer anzeigen möchtest):
 
    ```toml
-   DB_CLIENT_ID = "tu-client-id"
-   DB_API_KEY = "tu-client-secret"
+   DB_CLIENT_ID = "deine-client-id"
+   DB_API_KEY = "dein-client-secret"
    ```
 
-   Las claves deben ir **en el primer nivel** (sin `[seccion]`). El codigo las
-   lee de `st.secrets` y tambien de las variables de entorno, de modo que
-   `.env` sigue funcionando en local.
+   Die Schlüssel müssen **auf der obersten Ebene** stehen (ohne `[section]`). Der Code liest sie aus `st.secrets` und auch aus Umgebungsvariablen, sodass `.env` lokal weiterhin funktioniert.
 
-4. (Opcional) `DASHBOARD_MODE = "cloud"` como secret, para forzar el modo sin
-   broker.
+4. (Optional) Setze `DASHBOARD_MODE = "cloud"` als Secret, um den Modus ohne Broker zu erzwingen.
 
-Los feeds GTFS-RT se descargan en runtime y se cachean en `data/`; la primera
-carga del horario estatico tarda unos segundos. Sin credenciales de DB la app
-funciona igual: solo deja de mostrar los numeros de tren reales.
+Die GTFS-RT-Feeds werden zur Laufzeit heruntergeladen und in `data/` zwischengespeichert; das erstmalige Laden des statischen Fahrplans dauert einige Sekunden. Ohne DB-Zugangsdaten funktioniert die App weiterhin, zeigt dann aber keine echten Zugnummern an.
 
-## Mitigacion de fatiga de alarmas
+## Verringerung der Alarmmüdigkeit
 
-- **Logica de negocio pura** en `src/business_rules.py`
-  (`evaluate_incident_severity`), independiente de la interfaz.
-- **Cooldown de incidencias** en el detector, indexado por
-  `(estacion, tren_origen, tren_destino)`, para no inundar el sistema cuando
-  llega telemetria continua.
-- **Gestion de memoria**: el dashboard limita a `MAX_RECORDS` (100) los
-  registros de telemetria e incidencias que conserva.
-- **Orden estricto por severidad**, filtro por estacion y boton de resolucion.
+- **Reine Geschäftslogik** in `src/business_rules.py` (`evaluate_incident_severity`), unabhängig von der Benutzeroberfläche.
+- **Cooldown für Störungen** im Detektor, indiziert nach `(Bahnhof, Ausgangszug, Anschlusszug)`, um eine Überflutung des Systems bei kontinuierlich eintreffender Telemetrie zu verhindern.
+- **Speicherverwaltung**: Das Dashboard begrenzt die gespeicherten Telemetrie- und Störungsdatensätze auf `MAX_RECORDS` (100).
+- **Strikte Sortierung nach Schweregrad**, Bahnhofsfilter und Schaltfläche zum Beheben von Störungen.
 
-## Escenario de demostracion
+## Demonstrationsszenario
 
-- `USR-101`: transborda de **ICE 593** (retraso severo de 15-20 min) a
-  **ICE 590**. El tiempo disponible es negativo (aprox. -8 min) e inferior al
-  minimo de 7 min -> **incidencia ALTA** para el operario.
-- `USR-102`: transborda de **ICE 591** (puntual) a **ICE 592**. Dispone de
-  ~30 min -> sin incidencia.
+- `USR-101`: Umstieg von **ICE 593** (starke Verspätung von 15–20 Min.) auf **ICE 590**. Die verfügbare Zeit ist negativ (ca. -8 Min.) und liegt unter dem Mindestwert von 7 Min. -> **Störung mit hoher Priorität** für das Betriebspersonal.
+- `USR-102`: Umstieg von **ICE 591** (pünktlich) auf **ICE 592**. Es stehen etwa 30 Min. zur Verfügung -> keine Störung.
 
-> Nota: `estimated_travelers` (pasajeros afectados) y las reglas de severidad
-> son **estimaciones de demostracion**; las acciones recomendadas son texto
-> orientativo, no ejecutan ninguna operacion real.
+> Hinweis: `estimated_travelers` (betroffene Fahrgäste) und die Regeln für den Schweregrad sind **Demonstrationsschätzungen**; die empfohlenen Maßnahmen sind Hinweise und führen keine realen Vorgänge aus.
 >
-> La estimacion de viajeros se publica como **rango** para no dar un falso
-> exacto: el punto medio es el 50% de la capacidad tipica del tren de llegada
-> (ICE 445, IC 380, EC 340, TGV 500, regional 220) y el rango lo abre a
-> **35%–65%** (p. ej. un ICE: 155-222-289). El dashboard y la consola muestran
-> la franja («155-289 Reisende (est.)»); si un itinerario no trae rango, se
-> usa el punto medio.
+> Die Fahrgastschätzung wird als **Bereich** veröffentlicht, um Scheingenauigkeit zu vermeiden: Der Mittelwert entspricht 50 % der typischen Kapazität des ankommenden Zuges (ICE 445, IC 380, EC 340, TGV 500, Regionalzug 220); der Bereich reicht von **35 % bis 65 %** (z. B. ICE: 155-222-289). Dashboard und Konsole zeigen den Bereich („155-289 Reisende (geschätzt)“); wenn eine Reiseverbindung keinen Bereich enthält, wird der Mittelwert verwendet.
 
-## Estructura
+## Struktur
 
-```
+```text
 train-missed-connection-mvp/
   docker-compose.yml
   requirements.txt
   README.md
-  streamlit_app.py         # punto de entrada (Streamlit Cloud / raiz)
+  streamlit_app.py         # Einstiegspunkt (Streamlit Cloud / Stammverzeichnis)
   run.sh
-  start.bat        # Windows: arranque con un doble clic
-  run.ps1          # Windows: logica de arranque
-  stop.bat         # Windows: parada con un doble clic
-  stop.ps1         # Windows: logica de parada
+  start.bat        # Windows: Start per Doppelklick
+  run.ps1          # Windows: Startlogik
+  stop.bat         # Windows: Stopp per Doppelklick
+  stop.ps1         # Windows: Stopp-Logik
   src/
     __init__.py
     config.py
     business_rules.py
     dashboard_app.py
-    cloud_pipeline.py         # pipeline in-process (despliegue sin Kafka)
+    cloud_pipeline.py         # In-Process-Pipeline (Bereitstellung ohne Kafka)
     mock_gtfs_server.py
     gtfs_regional.py
     gtfs_schedule.py
     train_number_enricher.py
     traveler_estimate.py
-    db_stations_client.py       # cliente de la API Stations de DB
-    db_timetables_client.py     # cliente de la API Timetables de DB
+    db_stations_client.py       # Client für die DB-Stations-API
+    db_timetables_client.py     # Client für die DB-Timetables-API
     producers/
       __init__.py
       gtfs_producer.py
       passenger_producer.py
-      db_timetables_producer.py   # telemetria real (DATA_SOURCE=db)
-      gtfsrt_nationwide_producer.py  # telemetria nacional (gtfs.de)
+      db_timetables_producer.py   # Echtzeit-Telemetrie (DATA_SOURCE=db)
+      gtfsrt_nationwide_producer.py  # Nationale Telemetrie (gtfs.de)
     processors/
-      __init__.py
       connection_detector.py
     consumers/
       __init__.py
       incident_console.py
 ```
 
-## Detener el sistema
+## System stoppen
 
-- Windows: doble clic en `stop.bat`.
-- Linux/macOS/Git Bash: `Ctrl+C` en la terminal detiene los procesos Python. Para
-  apagar Kafka:
+- Windows: Doppelklick auf `stop.bat`.
+- Linux/macOS/Git Bash: `Ctrl+C` im Terminal beendet die Python-Prozesse. Um Kafka herunterzufahren:
 
 ```bash
 docker compose down
