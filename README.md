@@ -65,7 +65,7 @@ Wichtige Variablen in `.env`:
 
 > Im nationalen Modus wird die Telemetrie durch Abgleich der `trip_id` aus GTFS-RT mit dem statischen Fahrplan `fv` (Linie, Ziel und geplante Zeiten) angereichert.
 
-### Echte Zugnummern (Option A)
+### 🧠 Echte Zugnummern (Option A)
 
 Der nationale GTFS-RT-Feed von gtfs.de veröffentlicht **nur die Liniennummer** (z. B. `ICE 25`), nicht die Zugnummer (z. B. `ICE 274`). Um die tatsächliche Zugnummer anzuzeigen, verwendet der nationale Produzent die **Timetables**-API der DB (dieselbe wie im Modus `db`) für die **am stärksten frequentierten Bahnhöfe** des Fahrplans:
 
@@ -138,7 +138,7 @@ Nach dem Start des Systems öffne im Browser:
 http://localhost:8501
 ```
 
-## Bereitstellung auf Streamlit Community Cloud
+## 🚂 Bereitstellung auf Streamlit Community Cloud
 
 Das Dashboard kann ohne zusätzliche Infrastruktur als Web-App veröffentlicht werden. Der entscheidende Punkt: In der Cloud gibt es **keinen Kafka-Broker**, daher führt die App die Datenpipeline **innerhalb ihres eigenen Prozesses** aus (`src/cloud_pipeline.py`):
 
