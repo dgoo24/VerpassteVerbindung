@@ -113,7 +113,7 @@ chmod +x run.sh && ./run.sh
 
 Das Skript erstellt die virtuelle Umgebung, installiert Abhängigkeiten, startet Kafka im KRaft-Modus, wartet auf Port 9092, startet den GTFS-RT-Server, veröffentlicht die Reiseverbindungen und startet parallel den Detektor, den Produzenten, die Störungskonsole und das Web-Dashboard.
 
-## Web-Dashboard (Leitstelle)
+## 🧩 Web-Dashboard (Leitstelle)
 
 `run.sh` / `start.bat` starten ein Streamlit-Dashboard, das die Kafka-Topics in Echtzeit konsumiert (automatische Aktualisierung alle 2 Sekunden). Es ist die **Bedienoberfläche des Betriebspersonals**:
 
@@ -123,7 +123,7 @@ Das Skript erstellt die virtuelle Umgebung, installiert Abhängigkeiten, startet
 - **Bahnhofsfilter** (`selectbox`), um einen logistischen Knoten isoliert zu betrachten.
 - **Störungsverwaltung**: Schaltflächen zum Markieren von Störungen als behoben und zum Leeren der Ansicht.
 
-### Visuelle Identität (DB-/ICE-Stil)
+### 🧩 Visuelle Identität (DB-/ICE-Stil)
 
 Das Dashboard verwendet eine **Betriebsleitstellen**-Ästhetik, die von deutschen Zügen inspiriert ist:
 
@@ -174,14 +174,14 @@ Schritte:
 
 Die GTFS-RT-Feeds werden zur Laufzeit heruntergeladen und in `data/` zwischengespeichert; das erstmalige Laden des statischen Fahrplans dauert einige Sekunden. Ohne DB-Zugangsdaten funktioniert die App weiterhin, zeigt dann aber keine echten Zugnummern an.
 
-## Verringerung der Alarmmüdigkeit
+## 📡 Verringerung der Alarmmüdigkeit
 
 - **Reine Geschäftslogik** in `src/business_rules.py` (`evaluate_incident_severity`), unabhängig von der Benutzeroberfläche.
 - **Cooldown für Störungen** im Detektor, indiziert nach `(Bahnhof, Ausgangszug, Anschlusszug)`, um eine Überflutung des Systems bei kontinuierlich eintreffender Telemetrie zu verhindern.
 - **Speicherverwaltung**: Das Dashboard begrenzt die gespeicherten Telemetrie- und Störungsdatensätze auf `MAX_RECORDS` (100).
 - **Strikte Sortierung nach Schweregrad**, Bahnhofsfilter und Schaltfläche zum Beheben von Störungen.
 
-## Demonstrationsszenario
+## 📡 Demonstrationsszenario
 
 - `USR-101`: Umstieg von **ICE 593** (starke Verspätung von 15–20 Min.) auf **ICE 590**. Die verfügbare Zeit ist negativ (ca. -8 Min.) und liegt unter dem Mindestwert von 7 Min. -> **Störung mit hoher Priorität** für das Betriebspersonal.
 - `USR-102`: Umstieg von **ICE 591** (pünktlich) auf **ICE 592**. Es stehen etwa 30 Min. zur Verfügung -> keine Störung.
