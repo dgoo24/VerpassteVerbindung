@@ -1,5 +1,4 @@
-
-# MVP: Echtzeit-Events und Streaming – Leitstelle für den Bahnverkehr
+🚆# MVP: Echtzeit-Events und Streaming – Leitstelle für den Bahnverkehr
 
 Funktionsfähiges MVP für die **Betriebsleitstelle**. Überwacht Zugverspätungen mithilfe von GTFS-RT-Feeds, erkennt automatisch gefährdete Anschlüsse und veröffentlicht **priorisierte betriebliche Störungsmeldungen**, damit das Betriebspersonal kritische Anschlussverbindungen im Netz frühzeitig erkennen und verwalten kann.
 
