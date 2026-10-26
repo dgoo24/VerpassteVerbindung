@@ -266,7 +266,6 @@ train-missed-connection-mvp/
     ├── business_rules.py           # reine Schweregrad-Logik
     ├── dashboard_app.py            # Betriebsleitstellen-Oberfläche
     ├── cloud_pipeline.py           # In-Process-Pipeline ohne Kafka
-    ├── connection_detector.py      # erkennt gefährdete Anschlüsse
     ├── gtfs_schedule.py            # statischer Fernverkehrsfahrplan
     ├── gtfs_regional.py            # regionale Fahrplandaten
     ├── train_number_enricher.py    # echte Zugnummern über die DB-API
@@ -274,7 +273,7 @@ train-missed-connection-mvp/
     ├── db_stations_client.py       # DB Stations API
     ├── db_timetables_client.py     # DB Timetables API
     ├── producers/                  # GTFS-RT, DB, Mock → Kafka
-    ├── processors/                 # connection_detector
+    ├── processors/                 # connection_detector (erkennt Anschlussrisiken)
     └── consumers/                  # incident_console
 ```
 
